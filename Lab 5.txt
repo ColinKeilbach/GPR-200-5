@@ -62,6 +62,50 @@ sScalar lengthSq(sVector x)
     return dot(x, x);
 }
 
+float sq(float x) {
+    return x * x;
+}
+
+//this squares the value 5 times
+//2^2     = 4
+//4^2     = 16
+//16^2    = 256
+//256^2   = 65536
+//65536^2 = 4294967296
+float sq_5(float x) {
+    return sq(sq(sq(sq(sq(x)))));
+}
+
+//Light structure
+struct pointLight {
+    vec4 center;
+    vec4 color;
+    float intensity;
+};
+//Light constructor
+void initLight(out pointLight light, in vec4 center, in vec4 color, in float intensity) {
+    light.center = center;
+    light.color = color;
+    light.intensity = intensity;
+}
+
+//Calculates light values
+void lightCalc(out float lightingIntensity, in pointLight light, in vec3 normal, in vec3 position, in vec3 viewport) {
+    //This gets the vector direction from the light to the point on the sphere surface
+    vec3 direction = vec3(position.x - light.center.x, position.y - light.center.y, position.z - light.center.z);
+	
+    //Calculate diffuse light
+    float dist = sqrt(sq(direction.x) + sq(direction.y) + sq(direction.z)); //distance from surface to light
+    
+    vec3 lightNormal = normalize(light.center.xyz - position); //center of the light - surface
+    
+    float diffuseCoefficient = max(0.0, dot(normal, lightNormal)); //max so it cannot be negative
+    
+    float attenuatedIntensity = 1.0 / (1.0 + dist / light.intensity + sq(dist) / sq(light.intensity)); //This makes the light less intense
+    
+    //Return diffuse light
+    lightingIntensity = diffuseCoefficient * attenuatedIntensity;
+}
 
 //------------------------------------------------------------
 // VIEWPORT INFO
@@ -169,10 +213,43 @@ void initRayOrtho(out sRay ray,
 //------------------------------------------------------------
 // RENDERING FUNCTIONS
 
+//Makes a wave effect
 sCoord wave(in sCoord originalLocation) {
     sCoord defformedLocation;
-    defformedLocation = vec2(sin(originalLocation.x) + (iTime * 0.5), originalLocation.y);
+    defformedLocation = vec2(sin(originalLocation.x) - iTime, originalLocation.y); //makes the waves in the image using sin
     return defformedLocation;
+}
+
+vec3 wave(in vec3 originalLocation) {
+    vec3 defformedLocation;
+    defformedLocation = vec3(sin(originalLocation.x), originalLocation.yz); //makes the waves in the image using sin
+    return defformedLocation;
+}
+
+//Crossfade between 2 textures (cycle takes 2 seconds)
+vec4 crossfade(in vec4 texture1, in vec4 texture2) {
+    //This loops the effect
+    float time = iTime; //gets the current time
+    float timesRun = floor(time); //gets the number of times the full animation has completed
+    time -= timesRun; //removes the times run from the total time
+    //the final output of time is between 0.0 and 1.0
+    
+    //Fades back and forth
+    if(int(timesRun) % 2 == 0) {
+        return mix(texture1, texture2, time); //mixes the texture based off of the time
+    }else{
+        return mix(texture2, texture1, time); //mixes the textures based off of the time
+    }
+}
+
+//returns rotation matrix
+mat3 rotation(float degree) {
+    mat3 rotation = mat3(cos(degree) , 0.0 , sin(degree),
+         0.0         , 1.0 , 0.0,
+         -sin(degree), 0.0 , cos(degree)
+        );
+    
+    return rotation;
 }
 
 // calcColor: calculate the color of current pixel
@@ -193,24 +270,36 @@ color4 calcColor(in sViewport vp, in sRay ray)
     sDCoord res = iChannelResolution[0].xy;
     sScalar ratio = res.y * vp.resolutionInv.y;
     sCoord loc = px / res;
-    loc = ratio * loc + 1.55; //Zoom / Shift
+    loc = ratio * loc - vec2(iTime, 0.0); //Zoom / Shift
     
     loc = wave(loc); // wave effect
     
-    vec4 texture0 = texture(iChannel0, loc).rrrr; //texture from channel 0 in grey scale
-    texture0 *= color4(vp.uv.x * 3.0, 0.0, 0.0, 1.0);
-    vec4 texture2 = texture(iChannel2, loc).rrrr; //texture from channel 2
+    vec4 texture0 = texture(iChannel0, loc); //texture from channel 0
+    vec4 texture2 = texture(iChannel2, loc); //texture from channel 2
     
-    vec4 returnColor = mix(texture0, texture2, vp.uv.x ); //mixes the texture based of of the x value
+    vec4 returnColor = crossfade(texture0, texture2);
     
-    return returnColor;
+    //This creates the light
+    pointLight light;
+    initLight(light, vec4(0.0, 0.0, 1.0, 0.0), vec4(1.0), 1.0);
+    
+    float lightIntensity;
+    
+    lightCalc(lightIntensity, light, vec3(0.0, 0.0, 1.0), vec3(0.0), vp.viewportPoint.xyz);
+    
+    returnColor *= (lightIntensity * light.color);
+    
+    //return returnColor;
     //return texture(iChannel0, loc).rrrr; //black and white
     
     //Cube Map
     vec3 cubeLoc = ray.direction.xyz;
-    //Rotation matrix
-    //cubeLoc = rotation * cubeLoc;
-    //return texture(iChannel1, cubeLoc);
+    
+    cubeLoc = rotation(iTime) * cubeLoc;
+    
+    cubeLoc = wave(cubeLoc);
+    
+    return texture(iChannel1, cubeLoc);
     
 }
 
