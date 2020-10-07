@@ -171,7 +171,7 @@ void initRayOrtho(out sRay ray,
 
 sCoord wave(in sCoord originalLocation) {
     sCoord defformedLocation;
-    defformedLocation = vec2(sin(originalLocation.x) * 5.0, originalLocation.y);
+    defformedLocation = vec2(sin(originalLocation.x) + (iTime * 0.5), originalLocation.y);
     return defformedLocation;
 }
 
@@ -193,14 +193,15 @@ color4 calcColor(in sViewport vp, in sRay ray)
     sDCoord res = iChannelResolution[0].xy;
     sScalar ratio = res.y * vp.resolutionInv.y;
     sCoord loc = px / res;
-    loc = ratio * loc + 0.1; //Zoom / Shift
+    loc = ratio * loc + 1.55; //Zoom / Shift
     
-    vec4 texture0 = texture(iChannel0, loc); //texture from channel 0
-    vec4 texture2 = texture(iChannel2, loc); //texture from channel 2
+    loc = wave(loc); // wave effect
+    
+    vec4 texture0 = texture(iChannel0, loc).rrrr; //texture from channel 0 in grey scale
+    texture0 *= color4(vp.uv.x * 3.0, 0.0, 0.0, 1.0);
+    vec4 texture2 = texture(iChannel2, loc).rrrr; //texture from channel 2
     
     vec4 returnColor = mix(texture0, texture2, vp.uv.x ); //mixes the texture based of of the x value
-    
-    //loc = wave(loc);
     
     return returnColor;
     //return texture(iChannel0, loc).rrrr; //black and white
